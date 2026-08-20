@@ -59,6 +59,27 @@ def parse_pddl_file(file_path):
     log.info(f"Extracted {len(occupancies)} occupancies, {len(capacity)} capacities, and {len(turn_rate)} turn rates from the pddl+ file.")
     return occupancies, capacity, turn_rate
 
+"""
+Increase occupancy based on stress_factor
+Apply clipping thought static_capacity
+"""
+def apply_occupancy_stress(occupancies, capacities, stress_factor):
+    log.info(f"Applying stress factor {stress_factor} to occupancies.")
+    stressed_occupancies = {}
+
+    for link_name, current_occupancy in occupancies.items():
+        # calculating new theoretical value
+        new_occupancy = current_occupancy * stress_factor
+
+        max_cap = capacities.get(link_name, float("inf"))
+
+        if new_occupancy <= max_cap:
+            stressed_occupancies[link_name] = new_occupancy
+        else:
+            stressed_occupancies[link_name] = max_cap
+
+    return stressed_occupancies
+
 if __name__ == "__main__":
     # 1. Trova dinamicamente la cartella esatta in cui si trova questo script (pddl_parser.py)
     script_dir = os.path.dirname(os.path.abspath(__file__))
