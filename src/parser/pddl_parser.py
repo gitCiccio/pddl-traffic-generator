@@ -151,7 +151,7 @@ def generate_pddl_file(file_path, stress_factor=1.2):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     output_path = os.path.abspath(os.path.join(script_dir, "..", "..", "data", "generated_instances", new_filename))
 
-    log.info(f"Scrittura del nuovo file in: {output_path}")
+    log.info(f"Writing new file in: {output_path}")
 
     # 4. Sostituzione e Scrittura
     with open(file_path, "r") as f_in, open(output_path, "w") as f_out:
@@ -182,8 +182,107 @@ def generate_pddl_file(file_path, stress_factor=1.2):
                     continue
             f_out.write(line)
 
-    log.info("Generazione completata con successo!")
+    log.info("Generated pddl file")
 
+def generate_pddl_concert_scenario_file(file_path, stress_factor=1.2):
+    log.info(f"Generating pddl+ file: {file_path}")
+
+    occupancies, capacity, turn_rate = parse_pddl_file(file_path)
+    stressed_occupancies = apply_occupancy_stress(occupancies, capacity, stress_factor)
+    stressed_turn_rates = apply_concert_turnrate(turn_rate, target_destination="hsac3_c_wrac1", boost_value=0.8)
+
+    turn_rate_dict = {
+        (tr.stage, tr.origin, tr.destination): tr.value
+        for tr in stressed_turn_rates
+    }
+
+    # 3. Creazione del percorso di Output
+    # Es: da "data/base_instances/p01.pddl" a "data/generated_instances/p01_stressed.pddl"
+    base_name = os.path.basename(file_path)
+    name_without_ext, ext = os.path.splitext(base_name)
+    new_filename = f"{name_without_ext}_concert_scenario{ext}"
+
+    # Assumiamo che generated_instances sia allo stesso livello di base_instances
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    output_path = os.path.abspath(os.path.join(script_dir, "..", "..", "data", "generated_instances", new_filename))
+
+    log.info(f"Writing new file in: {output_path}")
+
+    # 4. Sostituzione e Scrittura
+    with open(file_path, "r") as f_in, open(output_path, "w") as f_out:
+        for line in f_in:
+            occupancy_match = occupancy_pattern.search(line)
+            turn_rate_match = turn_rate_pattern.search(line)
+
+            # Cerca se la riga attuale è un'occupancy (usando occupancy_pattern)
+            # Se lo è, estrai il nome del link, cerca il nuovo valore in stressed_occupancies
+            # E ricrea la riga testuale con il nuovo valore.
+            if occupancy_match:
+                stressed_link_name = occupancy_match.group(1)
+                if stressed_link_name in stressed_occupancies:
+                    new_value = stressed_occupancies[stressed_link_name]
+                    new_line = f"(= (occupancy {stressed_link_name}) {new_value})\n"
+                    f_out.write(new_line)
+                    continue
+            elif turn_rate_match:
+                stage = turn_rate_match.group(1)
+                origin = turn_rate_match.group(2)
+                destination = turn_rate_match.group(3)
+
+                key = (stage, origin, destination)
+                if key in turn_rate_dict:
+                    new_turn_rate_value = turn_rate_dict[key]
+                    new_line = f"(= (turnrate {stage} {origin} {destination}) {new_turn_rate_value})\n"
+                    f_out.write(new_line)
+                    continue
+            f_out.write(line)
+
+    log.info("Concert scenario successfully generated!")
+
+
+def apply_concert_turnrate(turn_rates, target_destination, boost_value=0.8):
+    log.info(f"Generating Concert Scenario: traffic diversion towards {target_destination} al {boost_value * 100}%")
+
+    # 1. Filtriamo SOLO i turn rate in ingresso dall'esterno (Onda Anomala)
+    outside_rates = [tr for tr in turn_rates if tr.stage == "fake" and tr.origin == "outside"]
+
+    # 2. Troviamo la rotta del concerto e le rotte secondarie
+    concert_route = None
+    other_routes = []
+    const_probability = 1.0
+
+    for tr in outside_rates:
+        if tr.destination == target_destination:
+            concert_route = tr
+        else:
+            other_routes.append(tr)
+
+    if not concert_route:
+        log.error(f"Destination not found {target_destination} in boundary links!")
+        return []
+
+
+    # Imposta direttamente il valore della concert_route uguale al boost_value
+    concert_route.value = boost_value
+
+    # Calcola quanta probabilità rimane per tutte le altre strade (1.0 - boost_value)
+    remaining_prob =  const_probability - boost_value
+
+    # Calcola la somma delle vecchie probabilità delle altre strade (ci serve per le proporzioni)
+    sum_others =  sum(tr.value for tr in other_routes)
+
+    # Ricalcola il valore delle rotte secondarie con un ciclo for.
+    if sum_others > 0:
+        for tr in other_routes:
+            # Formula matematica: nuovo_valore = (vecchio_valore / somma_altri) * probabilita_rimanente
+            tr.value = (tr.value / sum_others) * remaining_prob
+
+
+    # Alla fine raccogliamo le rotte modificate per restituirle
+    modified_rates = [concert_route]
+    modified_rates.extend(other_routes)
+
+    return modified_rates
 
 if __name__ == "__main__":
     # 1. Trova dinamicamente la cartella esatta in cui si trova questo script (pddl_parser.py)
@@ -194,3 +293,4 @@ if __name__ == "__main__":
     file_path = os.path.abspath(os.path.join(script_dir, "..", "..", "data", "base_instances", "p01[count=350].pddl"))
 
     generate_pddl_file(file_path, stress_factor=1.2)
+    generate_pddl_concert_scenario_file(file_path, stress_factor=1.2)
