@@ -290,7 +290,11 @@ if __name__ == "__main__":
 
     # 2. Costruisci il percorso unendo le cartelle (torna indietro di 2 livelli da src/parser/ e poi entra in data)
     # script_dir = src/parser -> .. = src -> .. = root del progetto -> data/base_instances/...
-    file_path = os.path.abspath(os.path.join(script_dir, "..", "..", "data", "base_instances", "p01[count=350].pddl"))
+    for i in range(1,6):
+        path_file = f"p0{i}[count=350].pddl"
+        file_path = os.path.abspath(
+            os.path.join(script_dir, "..", "..", "data", "base_instances", path_file))
+        generate_pddl_file(file_path, stress_factor=1.2)
+        generate_pddl_concert_scenario_file(file_path, stress_factor=1.2)
 
-    generate_pddl_file(file_path, stress_factor=1.2)
-    generate_pddl_concert_scenario_file(file_path, stress_factor=1.2)
+
