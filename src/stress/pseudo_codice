@@ -1,0 +1,117 @@
+# =====================================================================
+# MODULO: corridor_stress (nuova cartella, separata dal parser esistente)
+# Riusa parse_pddl_file() dal parser per leggere occupancy/capacity/turnrate
+# =====================================================================
+
+
+# ---------------------------------------------------------------------
+# 1. EURISTICA: scegli quale link boundary stressare
+# ---------------------------------------------------------------------
+FUNZIONE trova_link_ingresso_corridoio(turn_rates, start_junction, primo_link_corridoio):
+    """
+    Sceglie, tra i link 'fake outside X' che alimentano start_junction,
+    quello con il punteggio piu alto verso il primo link del corridoio.
+    Controllo a UN SOLO HOP: non si propaga la verifica oltre.
+    """
+
+    # 1. Filtra i turnrate esterni che entrano nella rete
+    #    (stage == "fake", origin == "outside")
+    candidati_boundary = [ tr FOR tr IN turn_rates
+                            IF tr.stage == "fake" AND tr.origin == "outside" ]
+
+    migliore_link = NULLO
+    migliore_score = 0.0
+
+    PER ogni tr_boundary IN candidati_boundary:
+        X = tr_boundary.destination            # es. "hsac3_c_wrac1"
+
+        # 2. Verifica se X e' effettivamente un link in ingresso a start_junction
+        #    (cioe' esiste almeno un turnrate che parte da X e attraversa start_junction)
+        turnrate_interni_X = [ tr FOR tr IN turn_rates
+                                IF tr.origin == X
+                                AND tr.destination == primo_link_corridoio ]
+
+        SE turnrate_interni_X e' VUOTO:
+            CONTINUA  # X non porta affatto verso il corridoio, scartalo
+
+        # 3. Livello 2: prendi il turnrate massimo tra le stage disponibili
+        #    (non simuliamo QUANDO la stage sara' attiva, solo SE esiste una buona via)
+        best_interno = MAX(tr.value FOR tr IN turnrate_interni_X)
+
+        # 4. Score combinato: quanto e' "porta principale" (Livello 1)
+        #    moltiplicato per quanto e' "diretto verso il corridoio" (Livello 2)
+        score = tr_boundary.value * best_interno
+
+        SE score > migliore_score:
+            migliore_score = score
+            migliore_link = X
+
+    SE migliore_link e' NULLO:
+        LOG errore "Nessun link boundary porta verso il corridoio da" start_junction
+        RITORNA NULLO
+
+    RITORNA migliore_link   # es. "hsac3_c_wrac1"
+
+
+# ---------------------------------------------------------------------
+# 2. GENERAZIONE SCENARIO: "ondata in ingresso" (Scenario 1)
+# ---------------------------------------------------------------------
+FUNZIONE generate_corridor_inflow_scenario(file_path, start_junction, primo_link_corridoio, boost_factor):
+    """
+    Prende un'istanza p0i GIA' COMPLETA (goal incluso, es. p05).
+    Modifica SOLO il blocco :init: occupancy e/o turnrate del link
+    boundary scelto dall'euristica. Il :goal resta invariato.
+    """
+
+    LOG "Generazione scenario ondata in ingresso per" file_path
+
+    # 1. Riusa il parser esistente
+    occupancies, capacities, turn_rates = parse_pddl_file(file_path)
+
+    # 2. Applica l'euristica per trovare il link da stressare
+    link_target = trova_link_ingresso_corridoio(turn_rates, start_junction, primo_link_corridoio)
+
+    SE link_target e' NULLO:
+        LOG errore "Impossibile generare lo scenario, nessun link valido trovato"
+        RITORNA
+
+    # 3. Stress SOLO sul link scelto (non su tutta la rete, non sui turnrate interni)
+    nuova_occupancy = MIN(occupancies[link_target] * boost_factor,
+                           capacities[link_target])   # clipping su capacity (Regola B)
+
+    stressed_occupancies = COPIA(occupancies)
+    stressed_occupancies[link_target] = nuova_occupancy
+
+    # NOTA: i turnrate NON vengono toccati in questo scenario (deciso ieri):
+    #       la redistribuzione delle svolte e' comportamento dei guidatori,
+    #       non e' compito nostro simularla. Restano quelli storici originali.
+
+    # 4. Scrittura output, stesso pattern di generate_pddl_file esistente
+    nome_file_output = nome_base(file_path) + "_corridor_inflow" + estensione(file_path)
+    percorso_output = "../../data/generated_instances/" + nome_file_output
+
+    APRI file_path IN LETTURA come f_in, percorso_output IN SCRITTURA come f_out:
+        PER ogni riga IN f_in:
+            SE riga matcha occupancy_pattern E link == link_target:
+                SCRIVI "(= (occupancy " + link_target + ") " + nuova_occupancy + ")"
+            ALTRIMENTI:
+                SCRIVI riga INVARIATA   # goal, turnrate, capacity, tutto il resto intatto
+
+    LOG "Scenario ondata in ingresso generato:" percorso_output
+    RITORNA percorso_output
+
+
+# ---------------------------------------------------------------------
+# UTILIZZO PREVISTO (coerente con __main__ esistente)
+# ---------------------------------------------------------------------
+file_p05 = "../../data/base_instances/p05[count=350].pddl"
+
+generate_corridor_inflow_scenario(
+    file_path = file_p05,
+    start_junction = "wrac1",
+    primo_link_corridoio = "wrac1_y_wrbc1",
+    boost_factor = 1.5     # valore di partenza da tarare sperimentalmente
+)
+
+# Output atteso: p05[count=350]_corridor_inflow.pddl
+# -> pronto per essere passato a ENHSP, poi la traccia va letta con PPS
