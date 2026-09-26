@@ -288,8 +288,8 @@ if __name__ == "__main__":
     # 1. Trova dinamicamente la cartella esatta in cui si trova questo script (pddl_parser.py)
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # 2. Costruisci il percorso unendo le cartelle (torna indietro di 2 livelli da src/parser/ e poi entra in data)
-    # script_dir = src/parser -> .. = src -> .. = root del progetto -> data/base_instances/...
+    # 2. Costruisci il percorso unendo le cartelle (torna indietro di 2 livelli da src/project_parser/ e poi entra in data)
+    # script_dir = src/project_parser -> .. = src -> .. = root del progetto -> data/base_instances/...
     for i in range(1,6):
         path_file = f"p0{i}[count=350].pddl"
         file_path = os.path.abspath(
