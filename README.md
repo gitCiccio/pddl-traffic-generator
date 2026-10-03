@@ -33,5 +33,8 @@ Il workspace è organizzato per mantenere una rigorosa separazione tra i dati st
 * `/src`: Contiene gli script sorgente in Python (parser, generatore logico, validatore di realismo)[cite: 2531].
 * `/data/base_instances`: Contiene i file PDDL+ storici originali e non modificati (le baseline)[cite: 2532, 2533].
 * `/data/generated_instances`: Directory di destinazione in cui lo script salverà i nuovi file PDDL+ pronti per i test di stress[cite: 2534].
+* `/domains`: Domini PDDL+, inclusi il profilo temporale e il baseline a domanda costante di 15 minuti.
+* `/results`: Log ENHSP, piani PPS e tracce PPS, separati per scenario. La mappa degli esperimenti è in `results/README.md`.
+* `/scripts/enhsp_to_pps_plan.py`: Converte un log ENHSP risolto in un piano PPS UTF-8 e può verificare la durata attesa.
 * `/docs`: Cartella dedicata alla documentazione accademica, PDF dei paper e appunti di progetto[cite: 2535].
 * `.gitignore`: File di configurazione per escludere file temporanei o cache dal tracciamento[cite: 2530].
